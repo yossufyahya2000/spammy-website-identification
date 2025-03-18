@@ -377,47 +377,84 @@ const BulkScanner: React.FC = () => {
               <Table>
                 <TableHeader className="sticky top-0 bg-card z-10">
                   <TableRow>
-                    <TableHead>URL</TableHead>
+                    <TableHead>Domain</TableHead>
                     <TableHead>Spam Score</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Message</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {bulkResults?.results.map((result, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">
-                        {formatUrlForDisplay(result.url, 30)}
-                      </TableCell>
-                      <TableCell className={getScoreColor(result.spamScore)}>
-                        {result.spamScore.toFixed(1)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge
-                          variant="outline"
-                          className={`
-                            ${result.status === 'clean' ? 'bg-green-500/10 text-green-700' :
-                              result.status === 'suspicious' ? 'bg-amber-500/10 text-amber-700' :
-                                result.status === 'dangerous' ? 'bg-red-500/10 text-red-700' :
-                                  'bg-secondary text-muted-foreground'}
-                          `}
-                        >
-                          {result.status === 'clean' ? (
-                            <CheckCircle className="h-3 w-3 mr-1" />
-                          ) : result.status === 'suspicious' ? (
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                          ) : result.status === 'dangerous' ? (
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                          ) : (
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                          )}
-                          {result.status.charAt(0).toUpperCase() + result.status.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {result.message}
-                      </TableCell>
-                    </TableRow>
+                    <React.Fragment key={index}>
+                      <TableRow>
+                        <TableCell className="font-medium">
+                          {formatUrlForDisplay(result.url, 30)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center">
+                            <span className={getScoreColor(result.spamScore)}>
+                              {result.spamScore.toFixed(1)}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant="outline"
+                            className={`
+                              ${result.status === 'clean' ? 'bg-green-500/10 text-green-700' :
+                                result.status === 'suspicious' ? 'bg-amber-500/10 text-amber-700' :
+                                  result.status === 'dangerous' ? 'bg-red-500/10 text-red-700' :
+                                    'bg-secondary text-muted-foreground'}
+                            `}
+                          >
+                            {result.status === 'clean' ? (
+                              <CheckCircle className="h-3 w-3 mr-1" />
+                            ) : result.status === 'suspicious' ? (
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                            ) : result.status === 'dangerous' ? (
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                            ) : (
+                              <AlertTriangle className="h-3 w-3 mr-1" />
+                            )}
+                            {result.status.charAt(0).toUpperCase() + result.status.slice(1)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const row = document.getElementById(`details-${index}`);
+                              if (row) {
+                                row.classList.toggle('hidden');
+                              }
+                            }}
+                          >
+                            Show Details
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                      <TableRow id={`details-${index}`} className="hidden bg-muted/50">
+                        <TableCell colSpan={4} className="p-4">
+                          <div className="space-y-2">
+                            <div className="text-sm">
+                              <span className="font-medium">Message: </span>
+                              {result.message}
+                            </div>
+                            {result.criticalUrls && result.criticalUrls.length > 0 && (
+                              <div className="text-sm">
+                                <span className="font-medium">Critical URL: </span>
+                                <ul className="list-disc list-inside mt-1 text-muted-foreground">
+                                  {result.criticalUrls.map((url, idx) => (
+                                    <li key={idx}>{url}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    </React.Fragment>
                   ))}
                 </TableBody>
               </Table>

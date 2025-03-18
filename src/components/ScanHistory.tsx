@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { formatTimestamp, formatUrlForDisplay, getScoreColor } from '../utils/scannerUtils';
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface Domain {
   id: string;
@@ -111,14 +112,13 @@ const ScanHistory = () => {
 
   const handleExportHistory = () => {
     const csv = [
-      ['Domain', 'Spam Score', 'Status', 'Message', 'Critical URLs', 'Checks', 'Date'],
+      ['Domain', 'Spam Score', 'Status', 'Message', 'Critical URL', 'Date'],
       ...domains.map(domain => [
         domain.domain,
         domain.spam_score,
         domain.status,
         domain.message || '',
         domain.critical_urls || '',
-        domain.number_of_checks,
         formatTimestamp(domain.created_at)
       ])
     ].map(row => row.join(',')).join('\n');
@@ -247,13 +247,13 @@ const ScanHistory = () => {
                 <p className="text-muted-foreground">No scan history available</p>
               </div>
             ) : (
-              <div className="overflow-x-auto">
+              <div className="overflow-hidden">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-card">
                     <TableRow>
                       <TableHead 
                         onClick={() => requestSort('created_at')} 
-                        className="cursor-pointer"
+                        className="cursor-pointer w-[200px]"
                       >
                         <div className="flex items-center">
                           Timestamp
@@ -262,7 +262,7 @@ const ScanHistory = () => {
                       </TableHead>
                       <TableHead 
                         onClick={() => requestSort('domain')} 
-                        className="cursor-pointer"
+                        className="cursor-pointer w-[200px]"
                       >
                         <div className="flex items-center">
                           Domain
@@ -271,76 +271,82 @@ const ScanHistory = () => {
                       </TableHead>
                       <TableHead 
                         onClick={() => requestSort('spam_score')} 
-                        className="cursor-pointer"
+                        className="cursor-pointer w-[200px]"
                       >
                         <div className="flex items-center">
                           Spam Score
                           {getSortIcon('spam_score')}
                         </div>
                       </TableHead>
-                      <TableHead>Result</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="w-[150px]">Status</TableHead>
+                      <TableHead className="text-right w-[150px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {sortedDomains.map((domain) => {
-                      const isExpanded = expandedItems.has(domain.id);
-                      
-                      return (
-                        <React.Fragment key={domain.id}>
-                          <TableRow>
-                            <TableCell>
-                              {formatTimestamp(domain.created_at)}
-                            </TableCell>
-                            <TableCell>
-                              {domain.domain}
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex items-center">
-                                {getStatusIcon(domain.status)}
-                                <span className={`ml-1 text-sm ${getScoreColor(domain.spam_score)}`}>
-                                  {domain.spam_score.toFixed(1)}
-                                </span>
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              {domain.status}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => toggleExpand(domain.id)}
-                              >
-                                {isExpanded ? 'Hide Details' : 'Show Details'}
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                          {isExpanded && (
-                            <TableRow className="bg-muted/20 border-0">
-                              <TableCell colSpan={5} className="p-4">
-                                <div className="text-sm">
-                                  <div className="mb-2"><strong>Status:</strong> {domain.status}</div>
-                                  <div className="mb-2"><strong>Message:</strong> {domain.message}</div>
-                                  {domain.critical_urls && domain.critical_urls.length > 0 && (
-                                    <div>
-                                      <strong>Critical URLs:</strong>
-                                      <ul className="list-disc list-inside pl-2 mt-1">
-                                        {domain.critical_urls.split(',').map((url, idx) => (
-                                          <li key={idx} className="text-muted-foreground">{url.trim()}</li>
-                                        ))}
-                                      </ul>
-                                    </div>
-                                  )}
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </React.Fragment>
-                      );
-                    })}
-                  </TableBody>
                 </Table>
+                <div className={domains.length > 15 ? "h-[600px] relative" : ""}>
+                  <ScrollArea className="w-full h-full">
+                    <Table>
+                      <TableBody className="overflow-auto">
+                        {sortedDomains.map((domain) => {
+                          const isExpanded = expandedItems.has(domain.id);
+                          
+                          return (
+                            <React.Fragment key={domain.id}>
+                              <TableRow>
+                                <TableCell className="w-[200px]">
+                                  {formatTimestamp(domain.created_at)}
+                                </TableCell>
+                                <TableCell className="w-[200px]">
+                                  {domain.domain}
+                                </TableCell>
+                                <TableCell className="w-[200px]">
+                                  <div className="flex items-center">
+                                    {getStatusIcon(domain.status)}
+                                    <span className={`ml-1 text-sm ${getScoreColor(domain.spam_score)}`}>
+                                      {domain.spam_score.toFixed(1)}
+                                    </span>
+                                  </div>
+                                </TableCell>
+                                <TableCell className="w-[150px]">
+                                  {domain.status}
+                                </TableCell>
+                                <TableCell className="text-right w-[150px]">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => toggleExpand(domain.id)}
+                                  >
+                                    {isExpanded ? 'Hide Details' : 'Show Details'}
+                                  </Button>
+                                </TableCell>
+                              </TableRow>
+                              {isExpanded && (
+                                <TableRow className="bg-muted/20 border-0">
+                                  <TableCell colSpan={5} className="p-4">
+                                    <div className="text-sm">
+                                      <div className="mb-2"><strong>Status:</strong> {domain.status}</div>
+                                      <div className="mb-2"><strong>Message:</strong> {domain.message}</div>
+                                      {domain.critical_urls && domain.critical_urls.length > 0 && (
+                                        <div>
+                                          <strong>Critical URL:</strong>
+                                          <ul className="list-disc list-inside pl-2 mt-1">
+                                            {domain.critical_urls.split(',').map((url, idx) => (
+                                              <li key={idx} className="text-muted-foreground">{url.trim()}</li>
+                                            ))}
+                                          </ul>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </TableCell>
+                                </TableRow>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </TableBody>
+                    </Table>
+                  </ScrollArea>
+                </div>
               </div>
             )}
           </CardContent>
@@ -371,6 +377,15 @@ const ScanHistory = () => {
 };
 
 export default ScanHistory;
+
+
+
+
+
+
+
+
+
 
 
 
