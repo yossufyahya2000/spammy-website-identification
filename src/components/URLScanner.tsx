@@ -48,7 +48,7 @@ const URLScanner: React.FC = () => {
       setIsShowingResult(false);
 
       // Extract domain from URL
-      const domain = url.replace(/^(https?:\/\/)?(www\.)?/i, '').split('/')[0];
+      const domain = url.replace(/\s+/g, '').replace(/^(https?:\/\/)?(www\.)?/i, '').split('/')[0];
 
       // Insert domain into Supabase
       const { data: insertedDomain, error: supabaseError } = await supabase
@@ -129,9 +129,9 @@ const URLScanner: React.FC = () => {
           <div className="inline-flex items-center justify-center p-2 mb-4 rounded-full bg-primary/10">
             <Shield className="h-6 w-6 text-primary" />
           </div>
-          <h2 className="text-3xl font-bold tracking-tight mb-2">Check any URL for spam</h2>
+          <h2 className="text-3xl font-bold tracking-tight mb-2">Check any URL</h2>
           <p className="text-muted-foreground max-w-md">
-            Scan any website and instantly find out if it's safe, suspicious, or potentially dangerous.
+            Scan any site to see if it’s linked to shady niches. LinkGuard gives a clear score to guide your linking decisions.
           </p>
         </div>
 
