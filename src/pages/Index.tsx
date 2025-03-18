@@ -23,10 +23,10 @@ const Index = () => {
                 <Shield className="h-10 w-10 text-primary" />
               </div>
               <h1 className="text-4xl sm:text-5xl md:text-6xl font-bold tracking-tight mb-4 bg-clip-text">
-                Protect yourself from malicious websites
+                Protect your SEO from bad backlinks
               </h1>
               <p className="text-xl text-muted-foreground max-w-2xl mb-8">
-                URL Sentry scans websites for potential threats, protecting you from phishing, malware, and spam. Scan any URL instantly or upload a CSV for bulk analysis.
+                Identify domains with gambling, CBD, cannabis, iGaming, or PBN links so you can avoid harmful backlinks and keep your SEO profile clean.
               </p>
               <div className="flex flex-col sm:flex-row gap-4">
                 <Button className="rounded-full py-6 px-8 text-base" size="lg" asChild>
@@ -56,9 +56,9 @@ const Index = () => {
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-5">
                     <Search className="h-6 w-6 text-primary" />
                   </div>
-                  <h3 className="text-xl font-semibold mb-2">Single URL Scanning</h3>
+                  <h3 className="text-xl font-semibold mb-2">Check Any URL</h3>
                   <p className="text-muted-foreground">
-                    Quickly analyze individual websites for potential threats with our advanced scanning technology.
+                    Scan any site to instantly see if it’s tied to questionable niches. LinkGuard provides a clear score, helping you decide whether to link to or receive links from that domain.
                   </p>
                 </CardContent>
               </Card>
@@ -68,9 +68,9 @@ const Index = () => {
                   <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center mb-5">
                     <Upload className="h-6 w-6 text-primary" />
                   </div>
-                  <h3 className="text-xl font-semibold mb-2">Bulk URL Processing</h3>
+                  <h3 className="text-xl font-semibold mb-2">Bulk URL Scanning</h3>
                   <p className="text-muted-foreground">
-                    Upload CSV files containing multiple URLs for efficient batch scanning and comprehensive reports.
+                    Have multiple sites to check? Upload your CSV list and let LinkGuard do the work. Quickly find out which domains might harm your SEO efforts.
                   </p>
                 </CardContent>
               </Card>
@@ -82,7 +82,7 @@ const Index = () => {
                   </div>
                   <h3 className="text-xl font-semibold mb-2">Scan History</h3>
                   <p className="text-muted-foreground">
-                    Keep track of all your previous scans with detailed logs and export capabilities for further analysis.
+                    Keep track of your scan results with our dashboard. We store each domain’s score and status, making it easy to track changes, export reports, or remove entries as needed.
                   </p>
                 </CardContent>
               </Card>

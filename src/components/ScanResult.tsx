@@ -112,7 +112,7 @@ const ScanResult: React.FC<ScanResultProps> = ({ result }) => {
                 {criticalUrls.map((criticalUrl, index) => (
                   <li key={index} className="flex items-start">
                     <AlertTriangle className="h-3.5 w-3.5 text-amber-500 mr-2 flex-shrink-0 mt-0.5" />
-                    <span className="break-all">{formatUrlForDisplay(criticalUrl, 60)}</span>
+                    <span className="break-all">{formatUrlForDisplay(criticalUrl, 500)}</span>
                   </li>
                 ))}
               </ul>
@@ -125,4 +125,5 @@ const ScanResult: React.FC<ScanResultProps> = ({ result }) => {
 };
 
 export default ScanResult;
+
 

@@ -11,12 +11,12 @@ const Footer: React.FC = () => {
         <div className="flex flex-col md:flex-row items-center justify-between">
           <div className="flex items-center space-x-2 mb-4 md:mb-0">
             <Shield className="h-5 w-5 text-primary" />
-            <span className="text-sm font-medium">URL Sentry</span>
+            <span className="text-sm font-medium">LinkGuard</span>
           </div>
           
           <div className="text-center md:text-right">
             <p className="text-sm text-muted-foreground">
-              &copy; {currentYear} URL Sentry. All rights reserved.
+              &copy; {currentYear} LinkGuard. All rights reserved.
             </p>
             <p className="text-xs text-muted-foreground mt-1">
               Protecting the web, one URL at a time.
