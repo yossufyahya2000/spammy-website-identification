@@ -1,12 +1,13 @@
 
-import React, { useState, useEffect } from 'react';
-import { History, Trash2, Download, ChevronDown, ChevronUp, AlertTriangle, Check, AlertCircle } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { History, ChevronUp, ChevronDown, Check, AlertTriangle, AlertCircle, Download, Trash2 } from 'lucide-react';
+import { supabase } from '../lib/supabase';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useToast } from "@/components/ui/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,125 +18,179 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { HistoryItem, UrlScanResult, BulkScanResult } from '../types/scanner';
-import { getHistory, clearHistory, exportHistoryAsCsv, formatTimestamp, formatUrlForDisplay, getScoreColor } from '../utils/scannerUtils';
+import { formatTimestamp, formatUrlForDisplay, getScoreColor } from '../utils/scannerUtils';
 
-const ScanHistory: React.FC = () => {
-  const [history, setHistory] = useState<HistoryItem[]>([]);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+interface Domain {
+  id: string;
+  domain: string;
+  spam_score: number;
+  status: 'Clean' | 'High Risk' | 'Review';
+  message: string | null;
+  critical_urls: string | null;
+  number_of_checks: number;
+  created_at: string;
+}
+
+const ScanHistory = () => {
+  const [domains, setDomains] = useState<Domain[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'ascending' | 'descending' }>({ 
-    key: 'timestamp', 
-    direction: 'descending' 
-  });
-  const { toast } = useToast();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [sortConfig, setSortConfig] = useState<{
+    key: string;
+    direction: 'ascending' | 'descending';
+  }>({ key: 'created_at', direction: 'descending' });
+
+  const fetchDomains = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('domains')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setDomains(data);
+    } catch (error) {
+      console.error('Error fetching domains:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
-    // Load history from localStorage
-    loadHistory();
+    // Set up real-time subscription first
+    const channel = supabase
+      .channel('domain_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'domains'
+        },
+        (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setDomains(prev => [payload.new as Domain, ...prev]);
+          } else if (payload.eventType === 'UPDATE') {
+            setDomains(prev => 
+              prev.map(domain => 
+                domain.id === payload.new.id ? payload.new as Domain : domain
+              )
+            );
+          } else if (payload.eventType === 'DELETE') {
+            setDomains(prev => 
+              prev.filter(domain => domain.id !== payload.old.id)
+            );
+          }
+        }
+      )
+      .subscribe();
+
+    // Then fetch initial data
+    fetchDomains();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const loadHistory = () => {
-    const historyItems = getHistory();
-    setHistory(historyItems);
-  };
+  const handleClearHistory = async () => {
+    const { error } = await supabase
+      .from('domains')
+      .delete()
+      .neq('id', ''); // Delete all records
 
-  const toggleExpand = (id: string) => {
-    const newExpanded = new Set(expandedItems);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
-    } else {
-      newExpanded.add(id);
+    if (error) {
+      console.error('Error clearing history:', error);
+      return;
     }
-    setExpandedItems(newExpanded);
-  };
 
-  const handleClearHistory = () => {
-    clearHistory();
-    setHistory([]);
     setShowDeleteDialog(false);
-    toast({
-      title: "History Cleared",
-      description: "All scan history has been successfully cleared",
-    });
+    setDomains([]);
   };
 
   const handleExportHistory = () => {
-    if (history.length === 0) {
-      toast({
-        title: "Nothing to Export",
-        description: "Your scan history is empty",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    const csvContent = exportHistoryAsCsv(history);
-    
-    // Create and download the file
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', `url-sentry-history-${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast({
-      title: "Export Complete",
-      description: "History has been exported to CSV",
+    const csv = [
+      ['Domain', 'Spam Score', 'Status', 'Message', 'Critical URLs', 'Checks', 'Date'],
+      ...domains.map(domain => [
+        domain.domain,
+        domain.spam_score,
+        domain.status,
+        domain.message || '',
+        domain.critical_urls || '',
+        domain.number_of_checks,
+        formatTimestamp(domain.created_at)
+      ])
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `url-sentry-history-${new Date().toISOString()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedItems(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
     });
   };
 
-  const sortedHistory = React.useMemo(() => {
-    let sortableItems = [...history];
-    
-    if (sortConfig !== null) {
-      sortableItems.sort((a, b) => {
-        if (sortConfig.key === 'timestamp') {
-          const dateA = new Date(a.timestamp).getTime();
-          const dateB = new Date(b.timestamp).getTime();
-          return sortConfig.direction === 'ascending' ? dateA - dateB : dateB - dateA;
-        } else if (sortConfig.key === 'type') {
-          return sortConfig.direction === 'ascending'
-            ? a.type.localeCompare(b.type)
-            : b.type.localeCompare(a.type);
-        }
-        return 0;
-      });
-    }
-    
-    return sortableItems;
-  }, [history, sortConfig]);
-
-  const requestSort = (key: string) => {
-    let direction: 'ascending' | 'descending' = 'ascending';
-    if (sortConfig.key === key && sortConfig.direction === 'ascending') {
-      direction = 'descending';
-    }
-    setSortConfig({ key, direction });
-  };
-
-  const getSortIcon = (columnName: string) => {
-    if (sortConfig.key !== columnName) {
-      return null;
-    }
-    return sortConfig.direction === 'ascending' ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />;
-  };
-
   const getStatusIcon = (status: string) => {
-    switch (status) {
+    switch (status.toLowerCase()) {
       case 'clean':
         return <Check className="h-3.5 w-3.5 text-green-500" />;
-      case 'suspicious':
+      case 'review':
         return <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />;
-      case 'dangerous':
+      case 'high risk':
         return <AlertCircle className="h-3.5 w-3.5 text-red-500" />;
       default:
         return <AlertCircle className="h-3.5 w-3.5 text-muted-foreground" />;
     }
   };
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig.key !== key) {
+      return null;
+    }
+    return sortConfig.direction === 'ascending' ? 
+      <ChevronUp className="ml-1 h-4 w-4" /> : 
+      <ChevronDown className="ml-1 h-4 w-4" />;
+  };
+
+  const requestSort = (key: string) => {
+    setSortConfig(prevConfig => ({
+      key,
+      direction: 
+        prevConfig.key === key && prevConfig.direction === 'ascending' 
+          ? 'descending' 
+          : 'ascending',
+    }));
+  };
+
+  const sortedDomains = [...domains].sort((a, b) => {
+    const direction = sortConfig.direction === 'ascending' ? 1 : -1;
+    switch (sortConfig.key) {
+      case 'created_at':
+        return direction * (new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      case 'domain':
+        return direction * a.domain.localeCompare(b.domain);
+      case 'spam_score':
+        return direction * (a.spam_score - b.spam_score);
+      default:
+        return 0;
+    }
+  });
 
   return (
     <section id="history" className="py-12 w-full">
@@ -162,7 +217,7 @@ const ScanHistory: React.FC = () => {
                 size="sm" 
                 className="flex items-center" 
                 onClick={handleExportHistory}
-                disabled={history.length === 0}
+                disabled={isLoading || domains.length === 0}
               >
                 <Download className="mr-1 h-4 w-4" />
                 Export
@@ -172,7 +227,7 @@ const ScanHistory: React.FC = () => {
                 size="sm" 
                 className="flex items-center text-destructive hover:bg-destructive/10" 
                 onClick={() => setShowDeleteDialog(true)}
-                disabled={history.length === 0}
+                disabled={isLoading || domains.length === 0}
               >
                 <Trash2 className="mr-1 h-4 w-4" />
                 Clear
@@ -180,175 +235,109 @@ const ScanHistory: React.FC = () => {
             </div>
           </CardHeader>
           <CardContent className="p-0">
-            {history.length === 0 ? (
+            {isLoading ? (
+              <div className="p-6 space-y-4">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
+            ) : domains.length === 0 ? (
               <div className="py-16 text-center">
                 <History className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-                <h3 className="text-lg font-medium mb-2">No scan history yet</h3>
-                <p className="text-sm text-muted-foreground">
-                  Your scan history will appear here after you scan a URL
-                </p>
+                <p className="text-muted-foreground">No scan history available</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead onClick={() => requestSort('timestamp')} className="cursor-pointer">
+                      <TableHead 
+                        onClick={() => requestSort('created_at')} 
+                        className="cursor-pointer"
+                      >
                         <div className="flex items-center">
                           Timestamp
-                          {getSortIcon('timestamp')}
+                          {getSortIcon('created_at')}
                         </div>
                       </TableHead>
-                      <TableHead onClick={() => requestSort('type')} className="cursor-pointer">
+                      <TableHead 
+                        onClick={() => requestSort('domain')} 
+                        className="cursor-pointer"
+                      >
                         <div className="flex items-center">
-                          Type
-                          {getSortIcon('type')}
+                          Domain
+                          {getSortIcon('domain')}
                         </div>
                       </TableHead>
-                      <TableHead>URL</TableHead>
+                      <TableHead 
+                        onClick={() => requestSort('spam_score')} 
+                        className="cursor-pointer"
+                      >
+                        <div className="flex items-center">
+                          Spam Score
+                          {getSortIcon('spam_score')}
+                        </div>
+                      </TableHead>
                       <TableHead>Result</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedHistory.map((item) => {
-                      const isExpanded = expandedItems.has(item.id);
+                    {sortedDomains.map((domain) => {
+                      const isExpanded = expandedItems.has(domain.id);
                       
-                      if (item.type === 'single') {
-                        const singleData = item.data as UrlScanResult;
-                        return (
-                          <React.Fragment key={item.id}>
-                            <TableRow>
-                              <TableCell>
-                                {formatTimestamp(item.timestamp)}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">Single</Badge>
-                              </TableCell>
-                              <TableCell>
-                                {formatUrlForDisplay(singleData.url)}
-                              </TableCell>
-                              <TableCell>
-                                <div className="flex items-center">
-                                  {getStatusIcon(singleData.status)}
-                                  <span className={`ml-1 text-sm ${getScoreColor(singleData.spamScore)}`}>
-                                    {singleData.spamScore.toFixed(1)}
-                                  </span>
+                      return (
+                        <React.Fragment key={domain.id}>
+                          <TableRow>
+                            <TableCell>
+                              {formatTimestamp(domain.created_at)}
+                            </TableCell>
+                            <TableCell>
+                              {domain.domain}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center">
+                                {getStatusIcon(domain.status)}
+                                <span className={`ml-1 text-sm ${getScoreColor(domain.spam_score)}`}>
+                                  {domain.spam_score.toFixed(1)}
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              {domain.status}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => toggleExpand(domain.id)}
+                              >
+                                {isExpanded ? 'Hide Details' : 'Show Details'}
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                          {isExpanded && (
+                            <TableRow className="bg-muted/20 border-0">
+                              <TableCell colSpan={5} className="p-4">
+                                <div className="text-sm">
+                                  <div className="mb-2"><strong>Status:</strong> {domain.status}</div>
+                                  <div className="mb-2"><strong>Message:</strong> {domain.message}</div>
+                                  {domain.critical_urls && domain.critical_urls.length > 0 && (
+                                    <div>
+                                      <strong>Critical URLs:</strong>
+                                      <ul className="list-disc list-inside pl-2 mt-1">
+                                        {domain.critical_urls.split(',').map((url, idx) => (
+                                          <li key={idx} className="text-muted-foreground">{url.trim()}</li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                  )}
                                 </div>
                               </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => toggleExpand(item.id)}
-                                >
-                                  {isExpanded ? 'Hide Details' : 'Show Details'}
-                                </Button>
-                              </TableCell>
                             </TableRow>
-                            {isExpanded && (
-                              <TableRow className="bg-muted/20 border-0">
-                                <TableCell colSpan={5} className="p-4">
-                                  <div className="text-sm">
-                                    <div className="mb-2"><strong>Status:</strong> {singleData.status}</div>
-                                    <div className="mb-2"><strong>Message:</strong> {singleData.message}</div>
-                                    {singleData.criticalUrls && singleData.criticalUrls.length > 0 && (
-                                      <div>
-                                        <strong>Critical URLs:</strong>
-                                        <ul className="list-disc list-inside pl-2 mt-1">
-                                          {singleData.criticalUrls.map((url, idx) => (
-                                            <li key={idx} className="text-muted-foreground">{url}</li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                    )}
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </React.Fragment>
-                        );
-                      } else {
-                        const bulkData = item.data as BulkScanResult;
-                        return (
-                          <React.Fragment key={item.id}>
-                            <TableRow>
-                              <TableCell>
-                                {formatTimestamp(item.timestamp)}
-                              </TableCell>
-                              <TableCell>
-                                <Badge variant="outline">Bulk ({bulkData.totalScanned})</Badge>
-                              </TableCell>
-                              <TableCell>Multiple URLs</TableCell>
-                              <TableCell>
-                                {bulkData.results.some(r => r.status === 'dangerous') ? (
-                                  <div className="flex items-center">
-                                    <AlertCircle className="h-3.5 w-3.5 text-red-500 mr-1" />
-                                    <span className="text-sm">Issues Found</span>
-                                  </div>
-                                ) : (
-                                  <div className="flex items-center">
-                                    <Check className="h-3.5 w-3.5 text-green-500 mr-1" />
-                                    <span className="text-sm">All Clean</span>
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => toggleExpand(item.id)}
-                                >
-                                  {isExpanded ? 'Hide Results' : 'Show Results'}
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                            {isExpanded && (
-                              <TableRow className="bg-muted/20 border-0">
-                                <TableCell colSpan={5} className="p-4">
-                                  <div className="text-sm mb-2">
-                                    <strong>Bulk Scan Results</strong> - {formatTimestamp(bulkData.timestamp)}
-                                  </div>
-                                  <Separator className="my-2" />
-                                  <div className="max-h-64 overflow-y-auto">
-                                    <Table>
-                                      <TableHeader>
-                                        <TableRow>
-                                          <TableHead>URL</TableHead>
-                                          <TableHead>Score</TableHead>
-                                          <TableHead>Status</TableHead>
-                                          <TableHead>Message</TableHead>
-                                        </TableRow>
-                                      </TableHeader>
-                                      <TableBody>
-                                        {bulkData.results.map((result, idx) => (
-                                          <TableRow key={idx}>
-                                            <TableCell className="text-xs">
-                                              {formatUrlForDisplay(result.url)}
-                                            </TableCell>
-                                            <TableCell className={`text-xs ${getScoreColor(result.spamScore)}`}>
-                                              {result.spamScore.toFixed(1)}
-                                            </TableCell>
-                                            <TableCell className="text-xs">
-                                              <div className="flex items-center">
-                                                {getStatusIcon(result.status)}
-                                                <span className="ml-1">{result.status}</span>
-                                              </div>
-                                            </TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">
-                                              {result.message}
-                                            </TableCell>
-                                          </TableRow>
-                                        ))}
-                                      </TableBody>
-                                    </Table>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </React.Fragment>
-                        );
-                      }
+                          )}
+                        </React.Fragment>
+                      );
                     })}
                   </TableBody>
                 </Table>
@@ -382,3 +371,7 @@ const ScanHistory: React.FC = () => {
 };
 
 export default ScanHistory;
+
+
+
+

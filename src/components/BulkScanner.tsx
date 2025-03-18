@@ -1,6 +1,15 @@
 
 import React, { useState, useRef } from 'react';
-import { Upload, FileText, FileSpreadsheet, AlertTriangle, Download, X, CheckCircle } from 'lucide-react';
+import { 
+  Upload, 
+  FileText, 
+  FileSpreadsheet, 
+  AlertTriangle, 
+  AlertCircle, // Add this import
+  Download, 
+  X, 
+  CheckCircle 
+} from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -10,6 +19,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { BulkScanResult, HistoryItem } from '../types/scanner';
 import { processCsvFile, saveToHistory, generateId, formatUrlForDisplay, getScoreColor } from '../utils/scannerUtils';
+import { supabase } from '../lib/supabase';
 
 const BulkScanner: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
@@ -87,49 +97,145 @@ const BulkScanner: React.FC = () => {
       setIsProcessing(true);
       setScanProgress(0);
       
-      // Set up progress simulation
-      const progressInterval = setInterval(() => {
-        setScanProgress(prev => {
-          const newProgress = prev + Math.random() * 5;
-          return newProgress >= 95 ? 95 : newProgress;
-        });
-      }, 200);
-      
-      const results = await processCsvFile(selectedFile);
-      
-      clearInterval(progressInterval);
-      setScanProgress(100);
-      
-      // Save to history
-      const historyItem: HistoryItem = {
-        id: generateId(),
-        type: 'bulk',
-        timestamp: new Date().toISOString(),
-        data: results
-      };
-      
-      saveToHistory(historyItem);
-      setBulkResults(results);
-      
-      // Small delay to show the 100% progress
-      setTimeout(() => {
-        setShowResults(true);
-      }, 500);
-      
-      toast({
-        title: "Scan Complete",
-        description: `Successfully scanned ${results.totalScanned} URLs`,
+      // Read the CSV file
+      const fileContent = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target?.result as string);
+        reader.onerror = (e) => reject(e);
+        reader.readAsText(selectedFile);
       });
-      
+
+      // Parse CSV content (assuming one URL per line or first column)
+      const domains = fileContent
+        .split('\n')
+        .map(line => line.split(',')[0].trim())
+        .filter(url => url.length > 0)
+        .map(url => url.replace(/^(https?:\/\/)?(www\.)?/i, '').split('/')[0]);
+
+      if (domains.length === 0) {
+        throw new Error('No valid domains found in the CSV file');
+      }
+
+      const totalDomains = domains.length;
+      const domainProgress = new Map<string, number>();
+      let completedDomains = 0;
+
+      // Create a subscription for all domains
+      const channel = supabase.channel('domain_updates')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'domains'
+          },
+          (payload) => {
+            const domain = payload.new.domain;
+            const checks = payload.new.number_of_checks;
+            
+            domainProgress.set(domain, checks);
+            
+            // Calculate total progress
+            let totalChecks = 0;
+            domainProgress.forEach(checks => {
+              totalChecks += Math.min(checks, 3);
+            });
+            
+            const progressPercentage = (totalChecks / (totalDomains * 3)) * 100;
+            setScanProgress(progressPercentage);
+
+            if (checks >= 3) {
+              completedDomains++;
+              if (completedDomains === totalDomains) {
+                channel.unsubscribe();
+                fetchFinalResults();
+              }
+            }
+          }
+        )
+        .subscribe();
+
+      // Insert all domains into Supabase
+      const insertPromises = domains.map(domain => 
+        supabase
+          .from('domains')
+          .insert([{ 
+            domain: domain,
+            spam_score: 0,
+            status: 'Clean'
+          }])
+          .select()
+          .single()
+      );
+
+      const insertedDomains = await Promise.all(insertPromises);
+      const domainIds = insertedDomains.map(result => result.data?.id).filter(Boolean);
+
+      // Send webhook for each domain
+      const webhookPromises = domains.map((domain, index) => 
+        fetch('https://lab.aiagents.menu/webhook/1cdb84df-6af0-406c-abbd-8aa8d0c918e7', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            record_id: domainIds[index],
+            domain: domain
+          }),
+        })
+      );
+
+      await Promise.all(webhookPromises);
+
+      // Function to fetch final results
+      const fetchFinalResults = async () => {
+        const { data: finalResults } = await supabase
+          .from('domains')
+          .select('*')
+          .in('domain', domains);
+
+        if (finalResults) {
+          const results: BulkScanResult = {
+            results: finalResults.map(domain => ({
+              url: domain.domain,
+              spamScore: domain.spam_score,
+              status: domain.status.toLowerCase(),
+              timestamp: new Date().toISOString(),
+              criticalUrls: domain.critical_urls ? domain.critical_urls.split(',') : undefined,
+              message: domain.message
+            })),
+            totalScanned: finalResults.length,
+            timestamp: new Date().toISOString()
+          };
+
+          setBulkResults(results);
+          setShowResults(true);
+          setIsProcessing(false);
+          
+          // Save to history
+          const historyItem: HistoryItem = {
+            id: generateId(),
+            type: 'bulk',
+            timestamp: new Date().toISOString(),
+            data: results
+          };
+          saveToHistory(historyItem);
+
+          toast({
+            title: "Scan Complete",
+            description: `Successfully scanned ${results.totalScanned} URLs`,
+          });
+        }
+      };
+
     } catch (error) {
       console.error('Processing error:', error);
+      setIsProcessing(false);
       toast({
         title: "Processing Failed",
         description: error instanceof Error ? error.message : "Failed to process CSV file",
         variant: "destructive",
       });
-    } finally {
-      setIsProcessing(false);
     }
   };
 
@@ -303,8 +409,10 @@ const BulkScanner: React.FC = () => {
                             <CheckCircle className="h-3 w-3 mr-1" />
                           ) : result.status === 'suspicious' ? (
                             <AlertTriangle className="h-3 w-3 mr-1" />
-                          ) : (
+                          ) : result.status === 'dangerous' ? (
                             <AlertCircle className="h-3 w-3 mr-1" />
+                          ) : (
+                            <AlertTriangle className="h-3 w-3 mr-1" />
                           )}
                           {result.status.charAt(0).toUpperCase() + result.status.slice(1)}
                         </Badge>
@@ -335,3 +443,6 @@ const BulkScanner: React.FC = () => {
 };
 
 export default BulkScanner;
+
+
+
