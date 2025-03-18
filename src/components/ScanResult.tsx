@@ -106,7 +106,7 @@ const ScanResult: React.FC<ScanResultProps> = ({ result }) => {
             <div className="space-y-2">
               <h4 className="text-sm font-medium flex items-center text-amber-600">
                 <AlertTriangle className="h-4 w-4 mr-2" />
-                Critical URLs Detected
+                Critical URL Detected
               </h4>
               <ul className="space-y-2 text-sm text-muted-foreground bg-amber-50/50 p-4 rounded-lg border border-amber-100">
                 {criticalUrls.map((criticalUrl, index) => (

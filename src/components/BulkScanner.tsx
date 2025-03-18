@@ -41,7 +41,7 @@ const BulkScanner: React.FC = () => {
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     setIsDragging(false);
     
@@ -105,7 +105,7 @@ const BulkScanner: React.FC = () => {
         reader.readAsText(selectedFile);
       });
 
-      // Parse CSV content (assuming one URL per line or first column)
+      // Parse CSV content
       const domains = fileContent
         .split('\n')
         .map(line => line.split(',')[0].trim())
@@ -120,7 +120,7 @@ const BulkScanner: React.FC = () => {
       const domainProgress = new Map<string, number>();
       let completedDomains = 0;
 
-      // Create a subscription for all domains
+      // Create a subscription
       const channel = supabase.channel('domain_updates')
         .on(
           'postgres_changes',
@@ -130,32 +130,38 @@ const BulkScanner: React.FC = () => {
             table: 'domains'
           },
           (payload) => {
-            const domain = payload.new.domain;
-            const checks = payload.new.number_of_checks;
-            
-            domainProgress.set(domain, checks);
-            
-            // Calculate total progress
-            let totalChecks = 0;
-            domainProgress.forEach(checks => {
-              totalChecks += Math.min(checks, 3);
-            });
-            
-            const progressPercentage = (totalChecks / (totalDomains * 3)) * 100;
-            setScanProgress(progressPercentage);
+            // Only process if this domain is in our list
+            if (domains.includes(payload.new.domain)) {
+              const domain = payload.new.domain;
+              const checks = payload.new.number_of_checks;
+              
+              // Only update if we haven't processed this domain fully yet
+              if (!domainProgress.has(domain) || domainProgress.get(domain)! < checks) {
+                domainProgress.set(domain, checks);
+                
+                // Calculate total progress
+                let totalChecks = 0;
+                domainProgress.forEach(checks => {
+                  totalChecks += Math.min(checks, 3);
+                });
+                
+                const progressPercentage = (totalChecks / (totalDomains * 3)) * 100;
+                setScanProgress(progressPercentage);
 
-            if (checks >= 3) {
-              completedDomains++;
-              if (completedDomains === totalDomains) {
-                channel.unsubscribe();
-                fetchFinalResults();
+                if (checks >= 3) {
+                  completedDomains++;
+                  if (completedDomains === totalDomains) {
+                    channel.unsubscribe();
+                    fetchFinalResults();
+                  }
+                }
               }
             }
           }
         )
         .subscribe();
 
-      // Insert all domains into Supabase
+      // Insert domains and continue with webhook calls...
       const insertPromises = domains.map(domain => 
         supabase
           .from('domains')
@@ -171,7 +177,7 @@ const BulkScanner: React.FC = () => {
       const insertedDomains = await Promise.all(insertPromises);
       const domainIds = insertedDomains.map(result => result.data?.id).filter(Boolean);
 
-      // Send webhook for each domain
+      // Send webhooks...
       const webhookPromises = domains.map((domain, index) => 
         fetch('https://lab.aiagents.menu/webhook/1cdb84df-6af0-406c-abbd-8aa8d0c918e7', {
           method: 'POST',
@@ -192,7 +198,7 @@ const BulkScanner: React.FC = () => {
         const { data: finalResults } = await supabase
           .from('domains')
           .select('*')
-          .in('domain', domains);
+          .in('id', domainIds); // Use domainIds instead of domains array
 
         if (finalResults) {
           const results: BulkScanResult = {
@@ -211,15 +217,6 @@ const BulkScanner: React.FC = () => {
           setBulkResults(results);
           setShowResults(true);
           setIsProcessing(false);
-          
-          // Save to history
-          const historyItem: HistoryItem = {
-            id: generateId(),
-            type: 'bulk',
-            timestamp: new Date().toISOString(),
-            data: results
-          };
-          saveToHistory(historyItem);
 
           toast({
             title: "Scan Complete",
