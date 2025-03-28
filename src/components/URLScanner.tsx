@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useToast } from "@/components/ui/use-toast";
 import ScanResult from './ScanResult';
 import { UrlScanResult, HistoryItem } from '../types/scanner';
-import { scanUrl, saveToHistory, generateId, isValidUrl } from '../utils/scannerUtils';
+import { DAILY_SCAN_LIMIT, SCAN_LIMIT_KEY, isValidUrl, checkAndUpdateScanLimit, incrementScanCount } from '../utils/scannerUtils';
 import { supabase } from '../lib/supabase';
 
 const URLScanner: React.FC = () => {
@@ -23,6 +23,18 @@ const URLScanner: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Check scan limits first
+    const { canScan, remainingTime } = checkAndUpdateScanLimit();
+    if (!canScan) {
+      const hoursRemaining = Math.ceil(remainingTime! / (1000 * 60 * 60));
+      toast({
+        title: "Daily Scan Limit Reached",
+        description: `You've reached your daily scan limit. Please try again in ${hoursRemaining} hours.`,
+        variant: "destructive",
+      });
+      return;
+    }
     
     if (!url.trim()) {
       toast({
@@ -43,6 +55,9 @@ const URLScanner: React.FC = () => {
     }
     
     try {
+      // Increment scan count before making the API call
+      incrementScanCount();
+      
       setIsLoading(true);
       setScanResult(null);
       setIsShowingResult(false);

@@ -18,7 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
 import { BulkScanResult, HistoryItem } from '../types/scanner';
-import { processCsvFile, saveToHistory, generateId, formatUrlForDisplay, getScoreColor } from '../utils/scannerUtils';
+import { checkAndUpdateScanLimit, incrementScanCount, formatUrlForDisplay, getScoreColor } from '../utils/scannerUtils';
 import { supabase } from '../lib/supabase';
 
 const BulkScanner: React.FC = () => {
@@ -93,6 +93,18 @@ const BulkScanner: React.FC = () => {
   const handleProcessFile = async () => {
     if (!selectedFile) return;
     
+    // Check scan limits first
+    const { canScan, remainingTime } = checkAndUpdateScanLimit();
+    if (!canScan) {
+      const hoursRemaining = Math.ceil(remainingTime! / (1000 * 60 * 60));
+      toast({
+        title: "Daily Scan Limit Reached",
+        description: `You've reached your daily scan limit. Please try again in ${hoursRemaining} hours.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
     try {
       setIsProcessing(true);
       setScanProgress(0);
@@ -115,6 +127,9 @@ const BulkScanner: React.FC = () => {
       if (domains.length === 0) {
         throw new Error('No valid domains found in the CSV file');
       }
+
+      // Increment scan count before processing
+      incrementScanCount();
 
       const totalDomains = domains.length;
       const domainProgress = new Map<string, number>();
@@ -228,6 +243,7 @@ const BulkScanner: React.FC = () => {
     } catch (error) {
       console.error('Processing error:', error);
       setIsProcessing(false);
+      setScanProgress(0);
       toast({
         title: "Processing Failed",
         description: error instanceof Error ? error.message : "Failed to process CSV file",
@@ -355,6 +371,7 @@ const BulkScanner: React.FC = () => {
                     className="w-full rounded-lg py-5"
                     onClick={handleProcessFile}
                   >
+                    <FileText className="mr-2 h-4 w-4" />
                     Start Scanning
                   </Button>
                 )}

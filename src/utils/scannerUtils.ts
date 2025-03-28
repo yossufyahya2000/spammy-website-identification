@@ -1,5 +1,53 @@
 import { UrlScanResult, BulkScanResult, HistoryItem } from '../types/scanner';
 
+// Add these utility functions
+export const DAILY_SCAN_LIMIT = 3;
+export const SCAN_LIMIT_KEY = 'urlScanLimits';
+
+interface ScanLimit {
+  count: number;
+  lastReset: string; // ISO string date
+}
+
+export const checkAndUpdateScanLimit = (): { canScan: boolean; remainingTime?: number } => {
+  const today = new Date().toISOString().split('T')[0]; // Get current date as YYYY-MM-DD
+  
+  // Get current limits from localStorage
+  const currentLimits = JSON.parse(localStorage.getItem(SCAN_LIMIT_KEY) || '{}') as ScanLimit;
+  
+  // If it's a new day, reset the counter
+  if (currentLimits.lastReset !== today) {
+    localStorage.setItem(SCAN_LIMIT_KEY, JSON.stringify({
+      count: 0,
+      lastReset: today
+    }));
+    return { canScan: true };
+  }
+  
+  // If under limit, allow scan
+  if (currentLimits.count < DAILY_SCAN_LIMIT) {
+    return { canScan: true };
+  }
+  
+  // Calculate time until next reset
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  tomorrow.setHours(0, 0, 0, 0);
+  const remainingTime = tomorrow.getTime() - new Date().getTime();
+  
+  return { canScan: false, remainingTime };
+};
+
+export const incrementScanCount = (): void => {
+  const today = new Date().toISOString().split('T')[0];
+  const currentLimits = JSON.parse(localStorage.getItem(SCAN_LIMIT_KEY) || '{}') as ScanLimit;
+  
+  localStorage.setItem(SCAN_LIMIT_KEY, JSON.stringify({
+    count: (currentLimits.count || 0) + 1,
+    lastReset: today
+  }));
+};
+
 // Simulate API call for URL scanning
 export const scanUrl = async (url: string): Promise<UrlScanResult> => {
   // Validate URL
@@ -221,3 +269,4 @@ export const formatUrlForDisplay = (url: string, maxLength = 50): string => {
   
   return displayUrl;
 };
+
