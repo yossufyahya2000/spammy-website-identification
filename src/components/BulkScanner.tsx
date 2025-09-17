@@ -194,7 +194,7 @@ const BulkScanner: React.FC = () => {
 
       // Send webhooks...
       const webhookPromises = domains.map((domain, index) => 
-        fetch('hhttps://systems.tasken.ai/webhook/1cdb84df-6af0-406c-abbd-8aa8d0c918e7', {
+        fetch('https://systems.tasken.ai/webhook/1cdb84df-6af0-406c-abbd-8aa8d0c918e7', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

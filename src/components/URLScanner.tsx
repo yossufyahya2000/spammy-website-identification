@@ -111,7 +111,7 @@ const URLScanner: React.FC = () => {
         .subscribe();
 
       // Send webhook
-      const webhookResponse = await fetch('hhttps://systems.tasken.ai/webhook/1cdb84df-6af0-406c-abbd-8aa8d0c918e7', {
+      const webhookResponse = await fetch('https://systems.tasken.ai/webhook/1cdb84df-6af0-406c-abbd-8aa8d0c918e7', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
